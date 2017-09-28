@@ -54,27 +54,14 @@ func Average(r io.Reader) (float64, error) {
 func main() {
 	var covFile string
 	var threshold float64
+	var waitPeriod time.Duration
 	flag.StringVar(&covFile, "file", "", "file to go test -cover output")
 	flag.Float64Var(&threshold, "threshold", 0.0, "the minimum coverage")
+	flag.DurationVar(&waitPeriod, "wait-period", 5*time.Second, "how long to wait for tests to run if tests results are being piped in")
 	flag.Parse()
 
-	time.Sleep(2 * time.Second)
-
-	fi, err := os.Stdin.Stat()
-	if err != nil {
-		exit(fmt.Errorf("failed to stat stdin:%v", err))
-	}
-
 	var avg float64
-	if fi.Size() > 0 {
-		avg, err = Average(os.Stdin)
-	} else {
-		if covFile == "" {
-			fmt.Printf("error:file is required")
-			flag.Usage()
-			os.Exit(1)
-		}
-
+	if covFile != "" {
 		f, err := os.Open(covFile)
 		if err != nil {
 			exit(err)
@@ -82,6 +69,22 @@ func main() {
 		defer f.Close()
 
 		avg, err = Average(f)
+	} else {
+
+		time.Sleep(waitPeriod)
+
+		fi, err := os.Stdin.Stat()
+		if err != nil {
+			exit(fmt.Errorf("failed to stat stdin:%v", err))
+		}
+
+		if fi.Size() == 0 {
+			fmt.Printf("error:please provide an input file or pipe in the coverage results.")
+			flag.Usage()
+			os.Exit(1)
+		} else {
+			avg, err = Average(os.Stdin)
+		}
 	}
 
 	fmt.Printf("average coverage:%f\n", avg)
