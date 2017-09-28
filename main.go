@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func exit(err error) {
@@ -56,6 +57,8 @@ func main() {
 	flag.StringVar(&covFile, "file", "", "file to go test -cover output")
 	flag.Float64Var(&threshold, "threshold", 0.0, "the minimum coverage")
 	flag.Parse()
+
+	time.Sleep(2 * time.Second)
 
 	fi, err := os.Stdin.Stat()
 	if err != nil {
