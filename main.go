@@ -25,16 +25,24 @@ func Average(r io.Reader) (float64, error) {
 
 	lines := strings.Split(string(b), "\n")
 
-	re, err := regexp.Compile("coverage:\\s\\d+\\.\\d+")
+	covRe, err := regexp.Compile("coverage:\\s\\d+\\.\\d+")
 	if err != nil {
-		return 0, fmt.Errorf("could not compile regexp:%v", err)
+		return 0, fmt.Errorf("compile coverage regex:%v", err)
+	}
+	failRe, err := regexp.Compile("^FAIL")
+	if err != nil {
+		return 0, fmt.Errorf("compile fail regex:%v", err)
 	}
 
 	var totalCov float64
 	var pkgCount float64
 
 	for _, line := range lines {
-		match := re.FindString(line)
+		failMatch := failRe.FindString(line)
+		if failMatch != "" {
+			return 0, fmt.Errorf("tests failed")
+		}
+		match := covRe.FindString(line)
 		if match == "" {
 			continue
 		}
@@ -48,6 +56,10 @@ func Average(r io.Reader) (float64, error) {
 		pkgCount = pkgCount + 1
 	}
 
+	if pkgCount == 0 {
+		return 0, nil
+	}
+	//TODO take care of divide by zero
 	return totalCov / pkgCount, nil
 }
 
@@ -84,6 +96,9 @@ func main() {
 			os.Exit(1)
 		} else {
 			avg, err = Average(os.Stdin)
+			if err != nil {
+				exit(err)
+			}
 		}
 	}
 
