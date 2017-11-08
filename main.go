@@ -1,15 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func exit(err error) {
@@ -17,14 +17,7 @@ func exit(err error) {
 	os.Exit(1)
 }
 
-func Average(r io.Reader) (float64, error) {
-	b, err := ioutil.ReadAll(r)
-	if err != nil {
-		return 0, fmt.Errorf("could not read coverage data:%v", err)
-	}
-
-	lines := strings.Split(string(b), "\n")
-
+func Average(goTestOutput []string) (float64, error) {
 	covRe, err := regexp.Compile("coverage:\\s\\d+\\.\\d+")
 	if err != nil {
 		return 0, fmt.Errorf("compile coverage regex:%v", err)
@@ -37,13 +30,13 @@ func Average(r io.Reader) (float64, error) {
 
 	var totalCov float64
 	var pkgCount float64
-	for _, line := range lines {
-		failMatch := failRe.FindString(line)
+	for _, output := range goTestOutput {
+		failMatch := failRe.FindString(output)
 		if failMatch != "" {
 			return 0, fmt.Errorf("tests failed")
 		}
 
-		match := covRe.FindString(line)
+		match := covRe.FindString(output)
 		if match == "" {
 			continue
 		}
@@ -62,46 +55,53 @@ func Average(r io.Reader) (float64, error) {
 	}
 	return totalCov / pkgCount, nil
 }
+func goTest(verbose bool) ([]string, error) {
+	var goRoot = "/usr/local"
+	if root := os.Getenv("GOROOT"); root != "" {
+		goRoot = os.Getenv("GOROOT")
+	}
+	cmd := exec.Command(filepath.Join(goRoot, "bin", "go"), "test", "-cover", "./...", ".")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("could not get stdin:%v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start:%v", err)
+	}
+
+	line := make(chan string)
+	var output []string
+	b := bufio.NewScanner(stdout)
+	go func() {
+		for b.Scan() {
+			if verbose {
+				fmt.Println(b.Text())
+			}
+			line <- b.Text()
+		}
+		close(line)
+	}()
+	for l := range line {
+		output = append(output, l)
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("wait:%v", err)
+	}
+	return output, nil
+}
 
 func main() {
-	var covFile string
 	var threshold float64
-	var waitPeriod time.Duration
-	flag.StringVar(&covFile, "file", "", "file to go test -cover output")
+	var verbose bool
 	flag.Float64Var(&threshold, "threshold", 0.0, "the minimum coverage")
-	flag.DurationVar(&waitPeriod, "wait-period", 5*time.Second, "how long to wait for tests to run if tests results are being piped in")
+	flag.BoolVar(&verbose, "verbose", false, "whether or not to print test output.")
 	flag.Parse()
 
-
-	var avg float64
-	if covFile != "" {
-		f, err := os.Open(covFile)
-		if err != nil {
-			exit(err)
-		}
-		defer f.Close()
-
-		avg, err = Average(f)
-	} else {
-
-		time.Sleep(waitPeriod)
-
-		fi, err := os.Stdin.Stat()
-		if err != nil {
-			exit(fmt.Errorf("failed to stat stdin:%v", err))
-		}
-
-		if fi.Size() == 0 {
-			fmt.Printf("error:please provide an input file or pipe in the coverage results.")
-			flag.Usage()
-			os.Exit(1)
-		} else {
-			avg, err = Average(os.Stdin)
-			if err != nil {
-				exit(err)
-			}
-		}
+	lines, err := goTest(verbose)
+	if err != nil {
+		exit(fmt.Errorf("tests failed:%v", err))
 	}
+	avg, err := Average(lines)
 
 	fmt.Printf("average coverage:%f\n", avg)
 
