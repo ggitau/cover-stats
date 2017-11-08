@@ -29,6 +29,7 @@ func Average(r io.Reader) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("compile coverage regex:%v", err)
 	}
+
 	failRe, err := regexp.Compile("^FAIL")
 	if err != nil {
 		return 0, fmt.Errorf("compile fail regex:%v", err)
@@ -36,12 +37,12 @@ func Average(r io.Reader) (float64, error) {
 
 	var totalCov float64
 	var pkgCount float64
-
 	for _, line := range lines {
 		failMatch := failRe.FindString(line)
 		if failMatch != "" {
 			return 0, fmt.Errorf("tests failed")
 		}
+
 		match := covRe.FindString(line)
 		if match == "" {
 			continue
@@ -59,7 +60,6 @@ func Average(r io.Reader) (float64, error) {
 	if pkgCount == 0 {
 		return 0, nil
 	}
-	//TODO take care of divide by zero
 	return totalCov / pkgCount, nil
 }
 
@@ -71,6 +71,7 @@ func main() {
 	flag.Float64Var(&threshold, "threshold", 0.0, "the minimum coverage")
 	flag.DurationVar(&waitPeriod, "wait-period", 5*time.Second, "how long to wait for tests to run if tests results are being piped in")
 	flag.Parse()
+
 
 	var avg float64
 	if covFile != "" {
